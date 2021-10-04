@@ -1,0 +1,22 @@
+name: find-points-3d-from-2d
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - pyyaml
+  - python=3.8
+  - pip
+  - numpy
+  - Pillow
+  - pyimagej
+  - opencv
+  - matplotlib
+  - scipy
+  - openjdk >=11.0.6
+  - ipykernel
+  - jupyter
+  - pip:
+      - pathlib
+      - requests
+      - pyinstaller
+      - tifffile
