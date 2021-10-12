@@ -3,10 +3,13 @@ import numpy as np
 
 from scyjava import config, jimport
 
+# headless
+# config.add_option('-Xmx6g')
+config.add_option('-Djava.awt.headless=true')
 config.add_repositories(
     {'scijava.public': 'https://maven.scijava.org/content/groups/public'})
-config.add_endpoints('net.imagej:imagej:2.2.0')
-config.add_endpoints('net.imagej:ij:1.53j')
+config.add_endpoints('net.imagej:imagej:2.3.0')
+config.add_endpoints('net.imagej:imagej-legacy:0.38.0')
 HashMap = jimport("java.util.HashMap")
 
 IJ = jimport('ij.IJ')
@@ -19,6 +22,29 @@ ZProjector = jimport('ij.plugin.ZProjector')
 # Use these for visual debugging
 # ImageJ = jimport('ij.ImageJ')
 # imagej = ImageJ()
+
+
+def save_rois_to_zip(rois, roi_filename):
+    DataOutputStream = jimport('java.io.DataOutputStream')
+    out = None
+    names = ['point_%05d.roi' % x for x in range(len(rois))]
+    ZipOutputStream = jimport('java.util.zip.ZipOutputStream')
+    ZipEntry = jimport('java.util.zip.ZipEntry')
+    BufferedOutputStream = jimport('java.io.BufferedOutputStream')
+    FileOutputStream = jimport('java.io.FileOutputStream')
+    zos = ZipOutputStream(BufferedOutputStream(FileOutputStream(roi_filename)))
+    out = DataOutputStream(BufferedOutputStream(zos))
+    RoiEncoder = jimport('ij.io.RoiEncoder')
+    re = RoiEncoder(out)
+
+    for k in range(len(rois)):
+        label = names[k]
+        roi = rois[k]
+        if roi is not None:
+            zos.putNextEntry(ZipEntry(label))
+            re.write(roi)
+            out.flush()
+    out.close()
 
 
 def find_points(image_filename, csv_filename, output_filename, roi_filename):
@@ -38,9 +64,16 @@ def find_points(image_filename, csv_filename, output_filename, roi_filename):
     duplicator = Duplicator()
     slicer = Slicer()
     half_region_size = [25.0, 25.0]
-    roi_manager = RoiManager(False)
+    # roi_manager = RoiManager(False)
+    rois = []
 
     num_failed = 0
+
+    MaximumFinder = jimport('ij.plugin.filter.MaximumFinder')
+    ImageProcessor = jimport('ij.process.ImageProcessor')
+    PointRoi = jimport('ij.gui.PointRoi')
+    ResultsTable = jimport('ij.measure.ResultsTable')
+    results_table = ResultsTable.getResultsTable()
 
     # Loop over points and find their Z-values
     for k in range(N):
@@ -58,19 +91,46 @@ def find_points(image_filename, csv_filename, output_filename, roi_filename):
                              imp.getNSlices(), int(point[0]), int(point[0]))
         resliced = slicer.reslice(dup)
         proj = ZProjector.run(resliced, 'avg')
-        IJ.run(proj, "Find Maxima...",
-               "prominence=10 output=[Point Selection]")
-        pt_roi = proj.getRoi()
-        if pt_roi is not None:
-            z_coord = pt_roi.getYBase()
-            new_points[k, 8] = z_coord
 
-            # Set the hyperstack position
-            pt_roi.setLocation(point[6], point[7])
-            pt_roi.setImage(imp)
-            pt_roi.setPosition(target_channel, int(z_coord), int(point[0]))
+        maximum_finder = MaximumFinder()
+        maximum_finder.setup('', proj)
 
-            roi_manager.addRoi(pt_roi)
+        ip = proj.getProcessor()
+        tolerance = 10
+        mode = 4  # 3 is "POINT_SELECTION" in imagej, 0 is "SINGLE_POINTS", 4 is LIST
+        exclude_on_edges = True
+        is_EDM = False
+        _ = maximum_finder.findMaxima(ip, tolerance, False,
+                                      ImageProcessor.NO_THRESHOLD, mode,
+                                      exclude_on_edges, is_EDM)
+        # keep looking at https://imagej.nih.gov/ij/developer/source/ij/plugin/filter/MaximumFinder.java.html
+        # in analyzeAndMarkMaxima for how PointRoi are setup
+        if results_table.size() > 0:
+            x = results_table.getValue(0, 0)
+            y = results_table.getValue(1, 0)
+            pt_roi = PointRoi(x, y)
+            results_table.reset()
+
+            # TODO: pick up debugging here, inspect
+            # import time
+            # proj.show()
+            # proj.setRoi(PointRoi(x, y))
+            # time.sleep(30)
+
+            if pt_roi is not None:
+                z_coord = y
+                new_points[k, 8] = z_coord
+
+                # Set the hyperstack position
+                pt_roi.setLocation(point[6], point[7])
+                pt_roi.setImage(imp)
+                pt_roi.setPosition(target_channel, int(z_coord), int(point[0]))
+
+                # roi_manager.addRoi(pt_roi)
+                rois += [pt_roi]
+            else:
+                num_failed += 1
+                new_points[k, 8] = np.NAN
         else:
             num_failed += 1
             new_points[k, 8] = np.NAN
@@ -83,7 +143,7 @@ def find_points(image_filename, csv_filename, output_filename, roi_filename):
                fmt='%i',
                header='time_point;number;Area;Mean;Min;Max;X;Y;Z')
 
-    roi_manager.runCommand('Save', roi_filename)
+    # save_rois_to_zip(rois, roi_filename)
 
 
 if __name__ == '__main__':
