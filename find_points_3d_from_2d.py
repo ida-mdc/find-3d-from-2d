@@ -105,11 +105,8 @@ def find_points(image_filename, csv_filename, output_filename, roi_filename):
 
         dup = duplicator.run(imp, target_channel, target_channel, 1,
                              imp.getNSlices(), int(point[0]), int(point[0]))
-        print(['dup', list(dup.getDimensions())])
         resliced = slicer.reslice(dup)
-        print(['resliced', list(resliced.getDimensions())])
         proj = ZProjector.run(resliced, 'avg')
-        print(['proj', list(proj.getDimensions())])
 
         maximum_finder = MaximumFinder()
         maximum_finder.setup('', proj)
@@ -142,13 +139,11 @@ def find_points(image_filename, csv_filename, output_filename, roi_filename):
 
                 # roi_manager.addRoi(pt_roi)
                 rois += [pt_roi]
-                print([k] + new_points[k, :])
             else:
                 print('Invalid PointRoi')
                 num_failed += 1
                 new_points[k, 8] = np.NAN
                 failed_points += [k]
-                print([k] + new_points[k, :])
 
             if debug:
                 import time
@@ -159,7 +154,7 @@ def find_points(image_filename, csv_filename, output_filename, roi_filename):
                 print(pt_roi)
                 time.sleep(10)
         else:
-            print('No results in table')
+            print('No results in table for point:')
             num_failed += 1
             new_points[k, 8] = np.NAN
             failed_points += [k]
