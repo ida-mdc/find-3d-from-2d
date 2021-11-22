@@ -3,9 +3,13 @@ import numpy as np
 
 from scyjava import config, jimport
 
+debug = False
+
 # headless
 # config.add_option('-Xmx6g')
-config.add_option('-Djava.awt.headless=true')
+if not debug:
+    config.add_option('-Djava.awt.headless=true')
+
 config.add_repositories(
     {'scijava.public': 'https://maven.scijava.org/content/groups/public'})
 config.add_endpoints('net.imagej:imagej:2.3.0')
@@ -20,8 +24,12 @@ Slicer = jimport('ij.plugin.Slicer')
 ZProjector = jimport('ij.plugin.ZProjector')
 
 # Use these for visual debugging
-# ImageJ = jimport('ij.ImageJ')
-# imagej = ImageJ()
+if debug:
+    ImageJ = jimport('ij.ImageJ')
+    imagej = ImageJ()
+
+# Hard coded parameters that can affect behavior
+tolerance = 4
 
 
 def save_rois_to_zip(rois, roi_filename):
@@ -50,6 +58,12 @@ def save_rois_to_zip(rois, roi_filename):
 def find_points(image_filename, csv_filename, output_filename, roi_filename):
     # img = tifffile.imread(image_filename)
     imp = IJ.openImage(image_filename)
+
+    # Overwrite calibration because reslice will try to interpolate
+    imp.getCalibration().pixelDepth = 1
+    imp.getCalibration().pixelWidth = 1
+    imp.getCalibration().pixelHeight = 1
+
     points = np.genfromtxt(csv_filename, delimiter=';')
 
     # Remove header (time_point;number;Area;Mean;Min;Max;X;Y)
@@ -75,6 +89,8 @@ def find_points(image_filename, csv_filename, output_filename, roi_filename):
     ResultsTable = jimport('ij.measure.ResultsTable')
     results_table = ResultsTable.getResultsTable()
 
+    failed_points = []
+
     # Loop over points and find their Z-values
     for k in range(N):
         point = points[k, :]
@@ -89,16 +105,18 @@ def find_points(image_filename, csv_filename, output_filename, roi_filename):
 
         dup = duplicator.run(imp, target_channel, target_channel, 1,
                              imp.getNSlices(), int(point[0]), int(point[0]))
+        print(['dup', list(dup.getDimensions())])
         resliced = slicer.reslice(dup)
+        print(['resliced', list(resliced.getDimensions())])
         proj = ZProjector.run(resliced, 'avg')
+        print(['proj', list(proj.getDimensions())])
 
         maximum_finder = MaximumFinder()
         maximum_finder.setup('', proj)
 
         ip = proj.getProcessor()
-        tolerance = 10
         mode = 4  # 3 is "POINT_SELECTION" in imagej, 0 is "SINGLE_POINTS", 4 is LIST
-        exclude_on_edges = True
+        exclude_on_edges = False
         is_EDM = False
         _ = maximum_finder.findMaxima(ip, tolerance, False,
                                       ImageProcessor.NO_THRESHOLD, mode,
@@ -112,10 +130,6 @@ def find_points(image_filename, csv_filename, output_filename, roi_filename):
             results_table.reset()
 
             # TODO: pick up debugging here, inspect
-            # import time
-            # proj.show()
-            # proj.setRoi(PointRoi(x, y))
-            # time.sleep(30)
 
             if pt_roi is not None:
                 z_coord = y
@@ -128,14 +142,32 @@ def find_points(image_filename, csv_filename, output_filename, roi_filename):
 
                 # roi_manager.addRoi(pt_roi)
                 rois += [pt_roi]
+                print([k] + new_points[k, :])
             else:
+                print('Invalid PointRoi')
                 num_failed += 1
                 new_points[k, 8] = np.NAN
+                failed_points += [k]
+                print([k] + new_points[k, :])
+
+            if debug:
+                import time
+                proj.show()
+                proj.setRoi(PointRoi(x, y))
+
+                print([x, y])
+                print(pt_roi)
+                time.sleep(10)
         else:
+            print('No results in table')
             num_failed += 1
             new_points[k, 8] = np.NAN
+            failed_points += [k]
+            print([k] + new_points[k, :])
 
     print('Number of failed detections: %d' % num_failed)
+    # Remove failed detections
+    new_points = np.delete(new_points, failed_points, 0)
 
     np.savetxt(output_filename,
                new_points.astype(int),
