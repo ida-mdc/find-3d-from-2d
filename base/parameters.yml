@@ -1,0 +1,44 @@
+
+
+data_folder: "/folder/to/data/"
+key_file_path: "/00_Extra/Details_imaging_data_3D.xls"
+image_file_path: "/03_Preprocessed_Data/02_3D/"
+output_folder: "/folder/to/output/"
+
+channel_tumor : 0
+channel_macrophages: 1
+channel_vessels: 2
+
+
+# cellpose segmentation
+use_gpu: False
+
+
+# Filters for tumor and vascular segmentation
+
+## rolling ball background substraction
+
+substract_background: "None" # "rolling_ball", "ellipsoid_kernel" or "None" to skip background substraction
+ellipsoid_kernel_size: 5
+ellipsoid_kernel_intensity: 5
+
+
+## anisotropic Gaussian blur, not that sigma is a scaling factor here, which is multiplied by the pixel size PhysicalSizeX,Y,Z to obtain the "physical" anisotropic sigma
+
+sigma_macrophage: 10  # sigma for Gaussian filtering before Otsu thresholding
+sigma_tumor: 10  # sigma for Gaussian filtering before Otsu thresholding
+
+## thesholding method
+
+thresholding_method: "otsu" # options are "isodata", "li", "mean", "minimum", "niblack", "otsu", "sauvola", "triangle", "yen", "local" or an integer value
+window_size_thresholding: 31 # only applies for local thresholding methods
+
+
+## segmentation parameters
+
+segmentation_method: "common" # or "Watershed"
+macrophages_small_objects: 350   # physical size of "debry" in microns^3 that will be taken out of macrophage mask
+export_masks : npy # or vtk or none
+
+
+

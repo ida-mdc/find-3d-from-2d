@@ -1,0 +1,5 @@
+data_folder: "/home/fjodor/Data/zebrafish_xenograft/data_structured/"
+key_file_name: "Details_imaging_data_3D.xls"
+output_folder: "/home/fjodor/Data/zebrafish_xenograft/data_structured/cellpose_segmentation/"
+
+use_gpu: True
